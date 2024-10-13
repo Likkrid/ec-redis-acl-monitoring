@@ -6,7 +6,7 @@ command_exists() {
 
 # Function to display help message
 show_help() {
-    echo "Usage: ./deploy.sh -b <s3-bucket-name> -r <redis-cluster-endpoint> -u <redis-username-param> -p <redis-password-param> -g <aws-region> -s <lambda-schedule>  [-c <custom-bucket-name>]"
+    echo "Usage: ./deploy.sh -b <s3-bucket-name> -r <redis-cluster-endpoint> -u <redis-username-param> -p <redis-password-param> -g <aws-region> -s <lambda-schedule> -c <custom-bucket-name>"
     echo ""
     echo "Options:"
     echo "  -b <s3-bucket-name>      Specify the S3 bucket name (must be globally unique)."
