@@ -40,7 +40,7 @@ done
 
 # Check if required parameters are provided
 if [ -z "$S3_BUCKET_NAME" ] || [ -z "$REDIS_CLUSTER_ENDPOINT" ] || [ -z "$REDIS_USERNAME_PARAM" ] || [ -z "$REDIS_PASSWORD_PARAM" ] || [ -z "$CUSTOM_BUCKET_NAME" ]; then
-    echo "Error: S3 bucket name, Redis cluster ID, Redis username parameter, and Redis password parameter are required."
+    echo "Error: S3 bucket names, Redis cluster ID, Redis username parameter, and Redis password parameter are required."
     show_help
     exit 1
 fi
