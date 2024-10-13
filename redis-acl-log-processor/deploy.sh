@@ -9,13 +9,13 @@ show_help() {
     echo "Usage: ./deploy.sh -b <s3-bucket-name> -r <redis-cluster-endpoint> -u <redis-username-param> -p <redis-password-param> -g <aws-region> -s <lambda-schedule> -c <custom-bucket-name>"
     echo ""
     echo "Options:"
-    echo "  -b <s3-bucket-name>      Specify the S3 bucket name (must be globally unique)."
+    echo "  -b <s3-bucket-name>      Specify the S3 bucket name for the packaged template."
     echo "  -r <redis-cluster-endpoint>     Specify the Redis cluster Endpoint."
     echo "  -u <redis-username-param> Specify the SSM parameter name for the Redis username."
     echo "  -p <redis-password-param> Specify the SSM parameter name for the Redis password."
     echo "  -g <aws-region>           Specify the AWS region (default: eu-west-1)."
     echo "  -s <lambda-schedule>      Specify the Lambda schedule expression (default: rate(12 hours))."
-    echo "  -c <custom-bucket-name>   Specify the custom S3 bucket name for the processed logs (optional)."
+    echo "  -c <custom-bucket-name>   Specify the custom S3 bucket name for the processed logs."
     echo "  -h                        Display this help message."
 }
 
