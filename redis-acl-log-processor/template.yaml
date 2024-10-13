@@ -1,0 +1,111 @@
+Transform: AWS::Serverless-2016-10-31
+Description: "AWS SAM template to process Redis ACL logs and store in S3, with crafted security group and VPC configuration."
+Parameters:
+  RedisClusterId:
+    Type: String
+    Description: "The ID of the Redis cluster (ElastiCache)."
+  LambdaSchedule:
+    Type: String
+    Default: "rate(1 hour)"
+    Description: "The schedule expression that defines when the Lambda function should run."
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: "The VPC ID where the Redis cluster is located."
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: "A list of Subnet IDs for the Lambda function to use within the VPC."
+  RedisSecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: "The Security Group ID of the Redis cluster."
+  RedisUsernameParameter:
+    Type: String
+    Description: "The SSM Parameter name for the Redis username."
+  RedisPasswordParameter:
+    Type: String
+    Description: "The SSM Parameter name for the Redis password."
+  S3Bucket:
+    Type: String
+    Description: "The S3 bucket name for storing processed logs."
+
+Resources:
+  ProcessedLogsBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties:
+      BucketName: !Ref S3Bucket
+
+  LambdaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "Security group for Lambda to access Redis cluster"
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 6379
+          ToPort: 6379
+          SourceSecurityGroupId: !Ref RedisSecurityGroupId
+      Tags:
+        - Key: "Name"
+          Value: "LambdaRedisAccessSG"
+
+  ACLLogProcessorLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: "ACLLogProcessorLambda"
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.9
+      CodeUri: ./src
+      Timeout: 900
+      Environment:
+        Variables:
+          S3_BUCKET: !Ref ProcessedLogsBucket
+          REDIS_CLUSTER_ENDPOINT: !Ref RedisClusterId
+          REDIS_USERNAME: !Ref RedisUsernameParameter
+          REDIS_PASSWORD: !Ref RedisPasswordParameter
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroup
+        SubnetIds: !Ref SubnetIds
+      Policies:
+        - S3WritePolicy:
+            BucketName: !Ref ProcessedLogsBucket
+        - Statement:
+            - Effect: "Allow"
+              Action:
+                - "elasticache:DescribeCacheClusters"
+              Resource: "*"
+        - Statement:
+            - Effect: "Allow"
+              Action:
+                - "ssm:GetParameter"
+                - "ssm:GetParameters"
+                - "ssm:GetParametersByPath"
+              Resource:
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${RedisUsernameParameter}"
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${RedisPasswordParameter}"
+
+  ACLLogProcessorSchedule:
+    Type: AWS::Events::Rule
+    Properties:
+      ScheduleExpression: !Ref LambdaSchedule
+      Targets:
+        - Arn: !GetAtt ACLLogProcessorLambda.Arn
+          Id: "ACLLogProcessorLambdaTarget"
+      State: ENABLED
+    DependsOn: ACLLogProcessorLambda
+
+  ACLLogProcessorLambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ACLLogProcessorLambda
+      Action: "lambda:InvokeFunction"
+      Principal: "events.amazonaws.com"
+      SourceArn: !GetAtt ACLLogProcessorSchedule.Arn
+
+Outputs:
+  S3BucketName:
+    Value: !Ref ProcessedLogsBucket
+    Description: "S3 bucket where processed logs are stored."
+  LambdaFunctionName:
+    Value: !Ref ACLLogProcessorLambda
+    Description: "Lambda function for processing ACL logs."

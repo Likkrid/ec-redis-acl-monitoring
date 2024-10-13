@@ -1,0 +1,132 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  S3Prefix:
+    Type: String
+    Description: 'Full S3 path for Redis ACL logs, e.g., bucket-name/prefix'
+Resources:
+  GlueDatabase:
+    Type: 'AWS::Glue::Database'
+    Properties:
+      CatalogId: !Ref 'AWS::AccountId'
+      DatabaseInput:
+        Name: 'redis_acl_logs'
+  GlueTable:
+    Type: 'AWS::Glue::Table'
+    Properties:
+        DatabaseName: !Ref GlueDatabase
+        CatalogId: !Ref 'AWS::AccountId'
+        TableInput:
+            Name: 'acl_logs'
+            StorageDescriptor:
+                Columns:
+                    - Name: 'count'
+                      Type: 'int'
+                    - Name: 'reason'
+                      Type: 'string'
+                    - Name: 'context'
+                      Type: 'string'
+                    - Name: 'object'
+                      Type: 'string'
+                    - Name: 'username'
+                      Type: 'string'
+                    - Name: 'age_seconds'
+                      Type: 'double'
+                    - Name: 'client-info'
+                      Type: 'struct<id:string,addr:string,laddr:string,fd:string,name:string,age:string,idle:string,flags:string,db:string,sub:string,psub:string,multi:string,qbuf:string,qbuf-free:string,argv-mem:string,obl:string,oll:string,omem:string,tot-mem:string,events:string,cmd:string,user:string,redir:string>'
+                Location: !Sub 's3://${S3Prefix}/'
+                InputFormat: 'org.apache.hadoop.mapred.TextInputFormat'
+                OutputFormat: 'org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat'
+                SerdeInfo:
+                    SerializationLibrary: 'org.openx.data.jsonserde.JsonSerDe'
+                    Parameters:
+                      'ignore.malformed.json': 'true'
+            TableType: 'EXTERNAL_TABLE'
+  AthenaWorkGroup:
+    Type: 'AWS::Athena::WorkGroup'
+    Properties:
+      Name: 'RedisACLWorkGroup'
+      Description: 'Athena WorkGroup for querying Redis ACL logs'
+      State: 'ENABLED'
+      WorkGroupConfiguration:
+        EnforceWorkGroupConfiguration: true
+        PublishCloudWatchMetricsEnabled: true
+        ResultConfiguration:
+          OutputLocation: !Sub 's3://${S3Prefix}/athena-results/'
+  AthenaQueryExecutionRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: 'AthenaQueryExecutionRole'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Principal:
+              Service: 'athena.amazonaws.com'
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: 'AthenaS3Access'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: 'Allow'
+              Action:
+                - 's3:GetObject'
+                - 's3:PutObject'
+                - s3:ListBucket'
+              Resource:
+                - !Sub 'arn:aws:s3:::${S3Prefix}'
+                - !Sub 'arn:aws:s3:::${S3Prefix}/*'
+            - Effect: 'Allow'
+              Action:
+                - 'glue:GetTable'
+                - 'glue:GetTableVersion'
+                - 'glue:GetTableVersions'
+              Resource: '*'
+  AthenaViewQuery:
+    Type: 'AWS::Athena::NamedQuery'
+    Properties:
+        Name: 'CreateFlattenedRedisACLLOGView'
+        Database: 'redis_acl_logs'
+        QueryString: !Sub |
+            CREATE OR REPLACE VIEW redis_acl_logs.flattend_acl_logs AS
+            SELECT
+                count,
+                reason,
+                context,
+                object,
+                username,
+                age_seconds,
+                "client-info".id AS client_id,
+                "client-info".addr AS client_addr,
+                "client-info".laddr AS client_laddr,
+                "client-info".fd AS client_fd,
+                "client-info".name AS client_name,
+                "client-info".age AS client_age,
+                "client-info".idle AS client_idle,
+                "client-info".flags AS client_flags,
+                "client-info".db AS client_db,
+                "client-info".sub AS client_sub,
+                "client-info".psub AS client_psub,
+                "client-info".multi AS client_multi,
+                "client-info".qbuf AS client_qbuf,
+                "client-info"."qbuf-free" AS client_qbuf_free,
+                "client-info"."argv-mem" AS client_argv_mem,
+                "client-info".obl AS client_obl,
+                "client-info".oll AS client_oll,
+                "client-info".omem AS client_omem,
+                "client-info"."tot-mem" AS client_tot_mem,
+                "client-info".events AS client_events,
+                "client-info".cmd AS client_cmd,
+                "client-info".user AS client_user,
+                "client-info".redir AS client_redir
+            FROM redis_acl_logs.acl_logs;
+
+Outputs:
+  AthenaQueryUrl:
+    Description: 'Athena query URL'
+    Value: !Sub 'https://console.aws.amazon.com/athena/home?region=${AWS::Region}#query/history'
+    Export:
+      Name: AthenaQueryUrl
+  QuickSightDashboardInstructions:
+    Description: 'Instructions to set up QuickSight Dashboard'
+    Value: 'Manually create a QuickSight data source for Athena and build your dashboard based on the Glue table created for ACL logs.'
